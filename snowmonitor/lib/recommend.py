@@ -102,7 +102,7 @@ def repeated_query_signal_sql(days: int, min_runs: int = 50) -> str:
     SELECT query_parameterized_hash AS QUERY_HASH,
            COUNT(*) AS RUNS,
            ROUND(SUM(execution_time)/1000.0/3600.0, 2) AS TOTAL_EXEC_HOURS,
-           ANY_VALUE(LEFT(query_text, 120)) AS SAMPLE
+           ANY_VALUE(LEFT(query_text, 120)) AS SAMPLE_QUERY
     FROM {AU}.QUERY_HISTORY
     WHERE start_time >= {win} AND execution_time > 0 AND query_parameterized_hash IS NOT NULL
     GROUP BY query_parameterized_hash
@@ -175,7 +175,7 @@ def repeated_query_recs(rows: list[dict]) -> list[Recommendation]:
         saving = round(approx_cost * REPEAT_RECOVERABLE, 2)
         if saving <= 0:
             continue
-        sample = str(r.get("SAMPLE", "")).strip()
+        sample = str(r.get("SAMPLE_QUERY", "")).strip()
         out.append(Recommendation(
             "Query", _sev(saving), f"Repeated heavy query ({runs:,} runs)",
             f"A query pattern ran {runs:,} times for ~{hours:.1f} exec-hours. Consider a result "

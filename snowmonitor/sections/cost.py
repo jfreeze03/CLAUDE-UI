@@ -47,8 +47,12 @@ def render() -> None:
 
     # ---- Efficiency & RCA (unit economics + what drove the change) ----
     with t_eff:
+        eff_mart = mart.is_efficiency_available()
+        if eff_mart:
+            st.caption("⚡ Efficiency metrics from the pre-aggregated mart.")
         st.subheader("Unit economics")
-        eff = _df(cost_intel.efficiency_summary_sql(days, company))
+        eff = _df(mart.efficiency_summary_sql(days, company) if eff_mart
+                  else cost_intel.efficiency_summary_sql(days, company))
         if eff.empty:
             st.info("No query/metering data in range.")
         else:
@@ -73,7 +77,8 @@ def render() -> None:
             st.dataframe(var, use_container_width=True, hide_index=True)
 
         st.subheader("Warehouse efficiency")
-        we = _df(cost_intel.warehouse_efficiency_sql(days, company))
+        we = _df(mart.warehouse_efficiency_sql(days, company) if eff_mart
+                 else cost_intel.warehouse_efficiency_sql(days, company))
         if not we.empty:
             st.dataframe(we, use_container_width=True, hide_index=True)
             st.caption("High QUEUE_SECONDS ⇒ undersized; high REMOTE_SPILL_GB ⇒ memory pressure / bad queries. "

@@ -5,15 +5,16 @@ from __future__ import annotations
 import streamlit as st
 
 from . import (overview, cost, tasks, security, alerts as alerts_page,
-               controls, recommendations, explorer, digest)
+               controls, recommendations, explorer, digest, optimize)
 
-PAGES = ["Overview", "Cost", "Recommendations", "Query Explorer", "Digest",
-         "Task Graphs", "Security", "Alerts", "Controls"]
+PAGES = ["Overview", "Cost", "Recommendations", "Optimization", "Query Explorer",
+         "Digest", "Task Graphs", "Security", "Alerts", "Controls"]
 
 _RENDER = {
     "Overview": overview.render,
     "Cost": cost.render,
     "Recommendations": recommendations.render,
+    "Optimization": optimize.render,
     "Query Explorer": explorer.render,
     "Digest": digest.render,
     "Task Graphs": tasks.render,

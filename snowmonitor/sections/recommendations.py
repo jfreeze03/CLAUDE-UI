@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from lib import session, recommend, formulas, cost_intel
+from lib import session, recommend, formulas, cost_intel, mart
 from ._common import scope, header, SEVERITY_EMOJI
 
 
@@ -18,10 +18,16 @@ def render() -> None:
     st.caption("Savings are conservative estimates. Review each fix against your workload before applying.")
 
     salt = session.refresh_salt()
-    idle_df = session.run(recommend.idle_warehouse_signal_sql(days), tier="standard", salt=salt)
+    fast = mart.is_efficiency_available()
+    if fast:
+        st.caption("⚡ Warehouse/query signals from the pre-aggregated mart (fast).")
+    idle_sql = mart.idle_signal_sql(days, company) if fast else recommend.idle_warehouse_signal_sql(days)
+    rq_sql = mart.repeated_query_signal_sql(days) if fast else recommend.repeated_query_signal_sql(days)
+    we_sql = mart.warehouse_efficiency_sql(days, company) if fast else cost_intel.warehouse_efficiency_sql(days, company)
+    idle_df = session.run(idle_sql, tier="standard", salt=salt)
     tt_df = session.run(recommend.time_travel_signal_sql(), tier="standard", salt=salt)
-    rq_df = session.run(recommend.repeated_query_signal_sql(days), tier="standard", salt=salt)
-    we_df = session.run(cost_intel.warehouse_efficiency_sql(days, company), tier="standard", salt=salt)
+    rq_df = session.run(rq_sql, tier="standard", salt=salt)
+    we_df = session.run(we_sql, tier="standard", salt=salt)
     cl_df = session.run(cost_intel.clustering_cost_sql(days, company), tier="standard", salt=salt)
 
     recs = recommend.rank(

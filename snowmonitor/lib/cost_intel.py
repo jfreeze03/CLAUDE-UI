@@ -84,7 +84,7 @@ def cortex_code_cost_sql(days: int, top: int = 50) -> str:
         ROUND(SUM(COALESCE(token_credits, 0)) * {config.AI_CREDIT_PRICE_USD}, 2) AS COST_USD,
         COUNT(*) AS REQUESTS
     FROM {AU}.CORTEX_CODE_CLI_USAGE_HISTORY
-    WHERE usage_date >= {_window(days)}
+    WHERE start_time >= DATEADD('day', -{max(1, int(days))}, CURRENT_TIMESTAMP())
     GROUP BY user_name
     ORDER BY AI_CREDITS DESC
     LIMIT {int(top)}

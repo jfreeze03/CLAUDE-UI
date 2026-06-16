@@ -99,6 +99,9 @@ WAREHOUSE_TIMEOUT_MIN_S: int = 0
 WAREHOUSE_TIMEOUT_MAX_S: int = 172800         # Snowflake max (2 days)
 
 CORTEX_USER_ROLE: str = "SNOWFLAKE.CORTEX_USER"
+# Model used by the AI optimization engine (must be allowed by CORTEX_MODELS_ALLOWLIST
+# if you set one). Common choices: 'llama3.1-70b', 'mistral-large2', 'snowflake-arctic'.
+CORTEX_OPTIMIZE_MODEL: str = "llama3.1-70b"
 
 APP_NAME = "SnowMonitor"
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.9.0"
