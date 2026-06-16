@@ -8,7 +8,6 @@ import config
 
 
 def scope() -> tuple[str, str, int]:
-    """Return (company, environment, days) from session state."""
     return (
         st.session_state.get("company", config.DEFAULT_COMPANY),
         st.session_state.get("environment", config.DEFAULT_ENVIRONMENT),
@@ -19,10 +18,9 @@ def scope() -> tuple[str, str, int]:
 def header(title: str, subtitle: str = "") -> None:
     company, env, days = scope()
     st.header(title)
-    bits = [f"**{company}**", env, f"{days}d"]
     if subtitle:
         st.caption(subtitle)
-    st.caption(" · ".join(bits) + "  ·  " + config.ACCOUNT_USAGE_FRESHNESS)
+    st.caption(f"**{company}** · {env} · {days}d  ·  {config.ACCOUNT_USAGE_FRESHNESS}")
 
 
 SEVERITY_EMOJI = {"Critical": "🔴", "High": "🟠", "Medium": "🟡", "Low": "⚪"}

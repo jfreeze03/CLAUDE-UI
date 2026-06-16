@@ -42,8 +42,7 @@ def render() -> None:
                 st.caption("Allocated estimate — not exact billing. Warehouse metering is exact at warehouse-hour grain.")
 
     with tab_app:
-        df = session.run(queries.application_cost_sql(days, company), tier="standard",
-                         salt=session.refresh_salt())
+        df = session.run(queries.application_cost_sql(days, company), tier="standard", salt=session.refresh_salt())
         if df.empty:
             st.info("No application data in range (requires SESSIONS visibility).")
         else:
@@ -51,8 +50,7 @@ def render() -> None:
             st.dataframe(df, width="stretch", hide_index=True)
 
     with tab_storage:
-        df = session.run(queries.storage_by_database_sql(company), tier="standard",
-                         salt=session.refresh_salt())
+        df = session.run(queries.storage_by_database_sql(company), tier="standard", salt=session.refresh_salt())
         if df.empty:
             st.info("No storage data available.")
         else:

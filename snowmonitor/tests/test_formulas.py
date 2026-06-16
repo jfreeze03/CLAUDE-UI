@@ -39,10 +39,10 @@ class MathTests(unittest.TestCase):
     def test_allocation(self):
         self.assertEqual(formulas.allocate_credits(100, 250, 1000), 25.0)
         self.assertEqual(formulas.allocate_credits(100, 250, 0), 0.0)
-        self.assertEqual(formulas.allocate_credits(100, 5000, 1000), 100.0)  # clamped
+        self.assertEqual(formulas.allocate_credits(100, 5000, 1000), 100.0)
         self.assertEqual(formulas.allocate_credits(100, -50, 1000), 0.0)
 
-    def test_sql_fragments_are_null_safe(self):
+    def test_sql_fragments_null_safe(self):
         self.assertIn("COALESCE", formulas.SQL_TOTAL_CREDITS)
         self.assertIn("COALESCE(credits_used_compute, credits_used", formulas.SQL_COMPUTE_CREDITS)
 

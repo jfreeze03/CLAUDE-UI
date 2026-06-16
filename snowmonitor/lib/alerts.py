@@ -1,13 +1,9 @@
 """Alert engine — proactive and reactive.
 
-`evaluate(metrics)` is pure (no Snowflake, fully tested): the UI gathers metric
-values from queries and passes them in; this returns a ranked list of alerts.
-
-  - PROACTIVE alerts fire before a budget/SLA is breached (forecast, trend, growth).
-  - REACTIVE alerts fire on current failures (failed tasks/logins, MFA gaps, queueing).
-
-`build_alert_object_sql(...)` generates a real Snowflake ALERT object so the same
-conditions can run server-side and email via a notification integration.
+`evaluate(metrics)` is pure (fully tested): the UI gathers metric values and passes
+them in; this returns a ranked list of alerts. PROACTIVE alerts fire before a
+budget/SLA is breached; REACTIVE alerts fire on current failures.
+`build_alert_object_sql` generates a real Snowflake ALERT object for server-side email.
 """
 
 from __future__ import annotations
@@ -18,15 +14,14 @@ import config
 
 PROACTIVE = "Proactive"
 REACTIVE = "Reactive"
-
 _SEVERITY_RANK = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
 
 
 @dataclass(frozen=True)
 class Alert:
-    severity: str          # Critical | High | Medium | Low
-    kind: str              # Proactive | Reactive
-    domain: str            # Cost | Tasks | Security | Performance
+    severity: str
+    kind: str
+    domain: str
     title: str
     detail: str
     value: str
@@ -45,25 +40,22 @@ def _num(v: object) -> float:
 
 
 def evaluate(metrics: dict, thresholds: dict | None = None) -> list[Alert]:
-    """Return ranked alerts for the given metric snapshot."""
     t = {**config.THRESHOLDS, **(thresholds or {})}
     alerts: list[Alert] = []
 
-    # ---------------- PROACTIVE: Cost ----------------
     mtd = _num(metrics.get("mtd_spend_usd"))
     days_elapsed = max(1.0, _num(metrics.get("days_elapsed")))
     days_in_month = max(days_elapsed, _num(metrics.get("days_in_month")) or 30.0)
     budget = _num(t.get("monthly_budget_usd"))
     if mtd > 0 and budget > 0:
         forecast = mtd / days_elapsed * days_in_month
-        pct_of_budget = forecast / budget * 100.0
-        if pct_of_budget >= t["budget_pacing_warn_pct"]:
-            sev = "High" if pct_of_budget >= 100 else "Medium"
+        pct = forecast / budget * 100.0
+        if pct >= t["budget_pacing_warn_pct"]:
             alerts.append(Alert(
-                sev, PROACTIVE, "Cost", "Budget pacing over threshold",
-                f"Forecast month-end spend ${forecast:,.0f} is {pct_of_budget:.0f}% of the "
-                f"${budget:,.0f} budget (MTD ${mtd:,.0f} over {days_elapsed:.0f} days).",
-                f"{pct_of_budget:.0f}% of budget", f">= {t['budget_pacing_warn_pct']:.0f}%",
+                "High" if pct >= 100 else "Medium", PROACTIVE, "Cost", "Budget pacing over threshold",
+                f"Forecast month-end spend ${forecast:,.0f} is {pct:.0f}% of the ${budget:,.0f} budget "
+                f"(MTD ${mtd:,.0f} over {days_elapsed:.0f} days).",
+                f"{pct:.0f}% of budget", f">= {t['budget_pacing_warn_pct']:.0f}%",
                 "Identify the top warehouse/user driving spend; right-size or add a resource monitor.",
             ))
 
@@ -91,7 +83,6 @@ def evaluate(metrics: dict, thresholds: dict | None = None) -> list[Alert]:
                 "Check largest databases and retention/time-travel settings.",
             ))
 
-    # ---------------- REACTIVE: Tasks ----------------
     failed_tasks = _num(metrics.get("failed_task_runs"))
     if failed_tasks >= t["failed_task_runs_warn"]:
         alerts.append(Alert(
@@ -101,7 +92,6 @@ def evaluate(metrics: dict, thresholds: dict | None = None) -> list[Alert]:
             "Open Task Graphs, find the failing root task, and inspect its error message.",
         ))
 
-    # ---------------- REACTIVE/PROACTIVE: Performance ----------------
     fqr = _num(metrics.get("failed_query_rate_pct"))
     if fqr >= t["failed_query_rate_warn_pct"]:
         alerts.append(Alert(
@@ -129,7 +119,6 @@ def evaluate(metrics: dict, thresholds: dict | None = None) -> list[Alert]:
             "Review heavy joins/sorts; size up the warehouse for those queries.",
         ))
 
-    # ---------------- REACTIVE: Security ----------------
     fl = _num(metrics.get("failed_logins"))
     if fl >= t["failed_logins_warn"]:
         alerts.append(Alert(
@@ -162,7 +151,6 @@ def evaluate(metrics: dict, thresholds: dict | None = None) -> list[Alert]:
 
 
 def summarize(alerts: list[Alert]) -> dict:
-    """Counts by severity for headline KPIs."""
     out = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "total": len(alerts)}
     for a in alerts:
         out[a.severity] = out.get(a.severity, 0) + 1
@@ -178,11 +166,6 @@ def build_alert_object_sql(
     recipients: str | None = None,
     integration: str | None = None,
 ) -> str:
-    """Generate a Snowflake ALERT object that emails when a condition holds.
-
-    `condition_sql` must be a SELECT that returns rows only when the alert should
-    fire (the ALERT fires when the condition query returns >= 1 row).
-    """
     integration = integration or config.NOTIFICATION_INTEGRATION
     recipients = recipients or config.DEFAULT_ALERT_RECIPIENTS
     safe_name = "".join(c if (c.isalnum() or c == "_") else "_" for c in name.upper())

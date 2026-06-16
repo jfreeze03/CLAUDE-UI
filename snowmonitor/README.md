@@ -1,85 +1,63 @@
 # SnowMonitor
 
-A focused, production-ready Snowflake monitoring app: **cost, task graphs, security, and
-proactive + reactive alerting**, with first-class **ALFA / Trexis** company segregation.
+A focused, production-ready Snowflake monitoring + control app: **cost, task graphs,
+security, proactive/reactive alerting**, and **guarded admin controls** (warehouse
+timeouts, Cortex limits), with first-class **ALFA / Trexis** company segregation.
 
-Built deliberately small and testable — the opposite of a sprawling dashboard. The logic that
-matters (company segregation, cost formulas, the alert engine) is pure Python with unit tests;
-the UI is a thin Streamlit layer over it.
+Built deliberately small and testable — the logic that matters (segregation, cost
+formulas, alert engine, anomaly detection, control SQL) is pure Python with **66 unit
+tests**; the UI is a thin Streamlit layer over it.
 
 ## What it does
 
-- **Overview** — MTD spend, today vs 7-day average, failed tasks/logins, live alert count, spend
-  trend, top warehouses, and the active alert feed.
-- **Cost** — breakdown by **warehouse, database, schema, user, role, query type, and application**.
-  Warehouse cost is exact (warehouse-hour metering); everything else is *allocated* by query
-  elapsed-time share and labeled as an estimate. Plus storage cost by database.
-- **Task Graphs** — per-graph (root task) rollup of runs, failures, and durations, with a
-  failures-only recent-run view.
-- **Security** — failed logins, enabled password users lacking MFA, and recent privilege grants.
-- **Alerts** — proactive (budget pacing forecast, daily spend spike, storage growth, and
-  **per-warehouse anomaly detection** vs each warehouse's own trailing baseline) and reactive
-  (failed tasks, failed-query rate, queueing, remote spill, failed logins, MFA gaps, grant volume).
-  Fired alerts are written to an **alert ledger** (history, run-count, acknowledge), and the page
-  generates real **Snowflake `ALERT` object SQL** so the same checks run server-side and email you
-  with the app closed.
-
-## Server-side objects (recommended)
-
-`setup/setup.sql` creates four objects in a database you control and makes the app faster and
-stateful. The app **auto-detects** them — until deployed it runs live-only with no errors:
-
-- **Cost marts** (`MART_WAREHOUSE_COST_DAILY`, `MART_QUERY_ATTR_DAILY`) refreshed hourly by a task,
-  so Cost/Overview read pre-aggregated daily data instead of scanning `ACCOUNT_USAGE` on every page
-  load — much faster and cheaper (a cost tool shouldn't be a cost problem). Per-warehouse anomaly
-  detection also uses the mart's daily grain.
-- **`ALERT_LEDGER`** — alert history with acknowledgment.
-- **`APP_LOG`** — render-error log, so failures are visible off-box instead of silently swallowed.
-
-Run it once as a role with `CREATE` on the monitoring database and `IMPORTED PRIVILEGES` on
-`SNOWFLAKE`. Edit the database/schema/warehouse names at the top of the file first.
-
-## Access control (optional)
-
-In `config.py`: `ALLOWED_VIEWER_ROLES` restricts who can open the app; `ROLE_COMPANY_LOCK` pins a
-role to one company and hides the picker. Both are empty by default (access governed by who can run
-the app).
+- **Overview** — MTD spend, today vs 7-day average, failed tasks/logins, live alert
+  count, spend trend, top warehouses, active alert feed.
+- **Cost** — breakdown by **warehouse, database, schema, user, role, query type, and
+  application**. Warehouse cost is exact; the rest is *allocated* by query elapsed-time
+  share and labeled as an estimate. Plus storage cost by database. Reads a
+  pre-aggregated **mart** when deployed (fast/cheap), else live.
+- **Task Graphs** — per-root-task rollup of runs, failures, durations; failures-only view.
+- **Security** — failed logins, users genuinely lacking MFA (SSO/key-pair users excluded
+  via LOGIN_HISTORY cross-check), recent grants.
+- **Alerts** — proactive (budget pacing, spend spike, storage growth, **per-warehouse
+  anomaly detection**) + reactive (failed tasks/queries, queueing, spill, failed logins,
+  MFA gaps, grants). Written to an **alert ledger** (history, run-count, ack). Generates
+  real Snowflake `ALERT` SQL for server-side email.
+- **Controls** — **guarded** state-changing actions:
+  - **Warehouse timeouts** — set `STATEMENT_TIMEOUT_IN_SECONDS` and
+    `STATEMENT_QUEUED_TIMEOUT_IN_SECONDS` (runaway/queue control).
+  - **Cortex limits** — turn Cortex on/off per role (`SNOWFLAKE.CORTEX_USER`) and restrict
+    models (`CORTEX_MODELS_ALLOWLIST`).
+  Every action shows current state, the SQL, and a **rollback** statement. **Safe by
+  default: generate-only** — copy SQL and run as an operator. Enable in-app execution via
+  `CONTROLS_ENABLED` + `CONTROLS_OPERATOR_ROLES`; execution then requires typed
+  confirmation and writes an audit row to `ACTION_AUDIT`.
 
 ## Company segregation (ALFA + Trexis)
 
-The previous tool had no clean way to split the two companies. SnowMonitor solves it in one place,
-`lib/company.py`, with deterministic **literal** matching (no `LIKE` wildcard ambiguity):
+One deterministic place — `lib/company.py` — with literal matching (no LIKE-wildcard
+ambiguity). Trexis is an explicit allow-list (`WH_TRXS_*` warehouses, `TRXS_`/`_TRXS_`
+databases, `TRXS_` users); **ALFA is the default catch-all**; account-level rows with no
+context are **Unclassified** (never silently ALFA). Python classifier and Snowflake
+`CASE`/`WHERE` SQL stay in lock-step. Company selector defaults to **ALFA**; `ALL` shows both.
+Edit the rules (and rates, thresholds, control bounds) in `config.py` only.
 
-- **Trexis** is an explicit allow-list: warehouses `WH_TRXS_*`, databases starting `TRXS_` or
-  containing `_TRXS_`, and users starting `TRXS_`.
-- **ALFA is the default catch-all**: any object with context that is *not* Trexis.
-- **Unclassified**: account-level rows with no warehouse/database/user context — never silently
-  folded into ALFA.
+## Server-side objects (recommended)
 
-Rules live in `config.py`; `lib/company.py` turns them into both a Python classifier and the
-identical Snowflake `CASE` / `WHERE` SQL, so attribution in the database matches attribution in
-the app. `Company` selector defaults to **ALFA**; `ALL` shows both.
-
-To change the rules (warehouse names, prefixes, rates, thresholds), edit `config.py` only.
-
-## Rates & thresholds
-
-Set in `config.py`: `$3.68`/credit, `$2.20`/AI credit, `$23.00`/TB-month, plus all alert
-thresholds (budget, spike %, queueing, failed logins, etc.). Nothing else hardcodes a rate.
+`setup/setup.sql` creates the cost marts (+ hourly refresh task), the alert ledger, the
+app error log, and the control-action audit. The app auto-detects them; until deployed it
+runs live-only with no errors. Run as a role with `CREATE` on the monitoring DB +
+`IMPORTED PRIVILEGES` on `SNOWFLAKE`. Edit DB/schema/warehouse names at the top first.
 
 ## Run it
 
-**Streamlit-in-Snowflake (recommended):** create a Streamlit app, add `streamlit`, `pandas`,
-`snowflake-snowpark-python` via the packages picker, and point it at `app.py`. The app uses the
-native session and needs a role with access to `SNOWFLAKE.ACCOUNT_USAGE`
-(`IMPORTED PRIVILEGES` on the `SNOWFLAKE` database).
-
-**Community Cloud / local:** `pip install -r requirements.txt`, add a `[connections.snowflake]`
-secret, then `streamlit run app.py`.
+- **Streamlit-in-Snowflake (recommended):** point a Streamlit app at `app.py`; add
+  `streamlit`, `pandas`, `snowflake-snowpark-python` via the packages picker. Needs a role
+  with access to `SNOWFLAKE.ACCOUNT_USAGE`.
+- **Community Cloud / local:** `pip install -r requirements.txt`, add a
+  `[connections.snowflake]` secret, then `streamlit run app.py`.
 
 ## Tests
-
-Pure-logic modules are unit-tested (segregation, formulas, alert engine, query shapes):
 
 ```
 python -m unittest discover -s tests
@@ -88,21 +66,35 @@ python -m unittest discover -s tests
 ## Layout
 
 ```
-app.py                 # entry: sidebar scope (ALFA default), nav, dispatch
-config.py              # SINGLE source of truth: companies, rates, thresholds
+app.py                 # entry: sidebar scope (ALFA default), nav, access gate, dispatch
+config.py              # SINGLE source of truth: companies, rates, thresholds, control flags
 lib/
   company.py           # ALFA/Trexis segregation (Python + SQL, in lock-step)
   formulas.py          # rates + credit/cost/allocation math
   queries.py           # company-scoped ACCOUNT_USAGE SQL builders
-  metrics.py           # gathers the numbers for Overview + alert engine
+  metrics.py           # gathers numbers for Overview + alert engine
   alerts.py            # proactive/reactive engine + generated ALERT SQL
+  anomaly.py           # per-entity baseline anomaly detection
+  controls.py          # guarded control-action SQL (timeouts, Cortex) + rollback + audit
+  mart.py              # mart-first reads (auto-detected)
+  ledger.py            # alert history + acknowledgment
+  observability.py     # error logging + access/operator gating
   session.py           # Snowflake session + tiered, guarded query cache
 sections/              # one module per page (thin UI over lib/)
-tests/                 # unit tests for the logic that matters
+setup/setup.sql        # marts, ledger, app log, action audit, refresh task
+tests/                 # 66 unit tests for the logic that matters
 ```
+
+## Access control & safety
+
+`config.py`: `ALLOWED_VIEWER_ROLES` gates who can view; `ROLE_COMPANY_LOCK` pins a role to
+one company. Controls are off by default and, when enabled, restricted to
+`CONTROLS_OPERATOR_ROLES` with typed confirmation + audit. The app's role needs the
+relevant privileges to *execute* controls (e.g. MODIFY on a warehouse, ACCOUNTADMIN for
+Cortex account params) — otherwise use generate-only mode and run the SQL as an operator.
 
 ## Notes & limits
 
-- `SNOWFLAKE.ACCOUNT_USAGE` lags (~45 min, up to ~3h for some views); the UI labels this.
+- `ACCOUNT_USAGE` lags (~45 min, up to ~3h); the UI labels this.
 - Non-warehouse cost is an allocation, not exact billing — surfaced honestly.
-- The generated `ALERT` SQL requires a configured email **notification integration** in your account.
+- See `VALIDATION.md` for the first-run punch-list of account-specific assumptions.

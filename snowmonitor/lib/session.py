@@ -1,8 +1,8 @@
 """Snowflake session + cached, guarded query runner.
 
-Works both inside Streamlit-in-Snowflake (native active session) and on Streamlit
-Community Cloud (st.connection from secrets). Every query is tagged, time-bounded,
-cached by tier, and returns an empty DataFrame on error instead of crashing a page.
+Works inside Streamlit-in-Snowflake (native session) and on Community Cloud
+(st.connection). Every query is tagged, time-bounded, tiered-cache, and returns an
+empty DataFrame on error instead of crashing a page.
 """
 
 from __future__ import annotations
@@ -12,20 +12,17 @@ import streamlit as st
 
 import config
 
-# Cache TTLs (seconds) by tier.
 _TTL = {"live": 30, "standard": 300, "historical": 3600, "metadata": 14400}
 _STATEMENT_TIMEOUT_SECONDS = 300
 _QUERY_TAG = f"{config.APP_NAME}"
 
 
 def _new_session():
-    """Create a Snowpark session, preferring the SiS native active session."""
     try:
         from snowflake.snowpark.context import get_active_session
         return get_active_session()
     except Exception:
         pass
-    # Community Cloud / local: use a configured Streamlit connection.
     try:
         return st.connection("snowflake").session()
     except Exception as exc:
@@ -37,7 +34,6 @@ def _new_session():
 
 
 def get_session():
-    """Return a cached Snowpark session, applying session parameters once."""
     if "sf_session" not in st.session_state:
         sess = _new_session()
         try:
@@ -55,7 +51,6 @@ def get_session():
 
 def _execute(sql: str) -> pd.DataFrame:
     df = get_session().sql(sql).to_pandas()
-    # Normalize column names to UPPER for consistent downstream access.
     df.columns = [str(c).upper() for c in df.columns]
     return df
 
@@ -84,7 +79,6 @@ _TIERS = {"live": _q_live, "standard": _q_standard, "historical": _q_historical,
 
 
 def run(sql: str, tier: str = "standard", salt: str = "") -> pd.DataFrame:
-    """Run a query through the tiered cache. Returns empty DataFrame on error."""
     fn = _TIERS.get(tier, _q_standard)
     try:
         return fn(sql, salt)
@@ -94,7 +88,6 @@ def run(sql: str, tier: str = "standard", salt: str = "") -> pd.DataFrame:
 
 
 def refresh_salt() -> str:
-    """A salt that changes on explicit refresh to bypass the cache."""
     return str(st.session_state.get("_refresh_salt", ""))
 
 

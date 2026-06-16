@@ -24,9 +24,9 @@ def render() -> None:
 
     st.subheader("Users without MFA")
     if mfa.empty:
-        st.success("All enabled password users have MFA (EXT_AUTHN_DUO).")
+        st.success("No password users at MFA risk (SSO / key-pair users excluded).")
     else:
-        st.warning("These enabled, password-enabled users lack MFA. Enforce MFA/SSO.")
+        st.warning("These password users lack MFA and are not using SSO/key-pair. Enforce MFA/SSO.")
         st.dataframe(mfa, width="stretch", hide_index=True)
 
     st.subheader("Failed logins")

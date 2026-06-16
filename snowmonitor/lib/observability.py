@@ -1,11 +1,6 @@
-"""App self-observability + access control.
-
-- log_error: records a page render failure to APP_LOG so failures are visible
-  off-box instead of silently swallowed (the lesson from the prior tool).
-- access helpers: optional role-based gating and per-role company lock.
-All best-effort: if APP_LOG is absent, logging no-ops; if no roles are configured,
-access is open (governed by who can run the app).
-"""
+"""App self-observability + access control. log_error records render failures to
+APP_LOG; access helpers provide optional role gating and per-role company lock.
+All best-effort: absent table => logging no-ops; no roles configured => access open."""
 
 from __future__ import annotations
 
@@ -36,7 +31,6 @@ def current_user() -> str:
 
 
 def access_allowed(role: str) -> bool:
-    """True if the role may view the app (open when no allow-list configured)."""
     allowed = tuple(r.upper() for r in config.ALLOWED_VIEWER_ROLES)
     if not allowed:
         return True
@@ -44,13 +38,17 @@ def access_allowed(role: str) -> bool:
 
 
 def company_lock(role: str) -> str | None:
-    """Return the single company a role is locked to, or None (free choice)."""
     locks = {k.upper(): v for k, v in config.ROLE_COMPANY_LOCK.items()}
     return locks.get(str(role or "").upper())
 
 
+def operator_allowed(role: str) -> bool:
+    """True if the current role may EXECUTE controls (state-changing actions)."""
+    ops = tuple(r.upper() for r in config.CONTROLS_OPERATOR_ROLES)
+    return bool(config.CONTROLS_ENABLED and ops and str(role or "").upper() in ops)
+
+
 def log_error(page: str, exc: BaseException) -> None:
-    """Best-effort write of a render failure to APP_LOG."""
     try:
         role = st.session_state.get("_role", "")
         user = st.session_state.get("_user", "")

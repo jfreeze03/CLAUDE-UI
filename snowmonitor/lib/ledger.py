@@ -1,10 +1,6 @@
-"""Alert ledger — gives alerts memory.
-
-Without this, alerts are recomputed and forgotten every page load. The ledger
-upserts each fired alert (one row per stable alert_key, with a run_count and
-first/last seen), supports acknowledgment, and reads recent history. All writes
-are best-effort: if the ledger table is absent, the app simply runs without history.
-"""
+"""Alert ledger — gives alerts memory. Upserts each fired alert (one row per stable
+alert_key with run_count + first/last seen), supports acknowledgment, reads history.
+All writes best-effort: absent table => app runs without history."""
 
 from __future__ import annotations
 
@@ -19,7 +15,6 @@ LEDGER = config.monitoring_fqn(config.ALERT_LEDGER_TABLE)
 
 
 def alert_key(domain: str, title: str, company: str) -> str:
-    """Stable identifier so the same alert across runs is one ledger row."""
     raw = f"{company}|{domain}|{title}".upper()
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
@@ -29,7 +24,6 @@ def _esc(v: object) -> str:
 
 
 def record(alerts: list, company: str) -> bool:
-    """Upsert fired alerts into the ledger. Returns False (no-op) on any failure."""
     if not alerts:
         return True
     rows = []
@@ -66,7 +60,6 @@ def record(alerts: list, company: str) -> bool:
 
 
 def acknowledge(key: str, user: str) -> bool:
-    """Mark an alert acknowledged."""
     sql = f"""UPDATE {LEDGER}
               SET status = 'ACK', ack_by = {_esc(user)}, ack_at = CURRENT_TIMESTAMP()
               WHERE alert_key = {_esc(key)}"""
@@ -78,7 +71,6 @@ def acknowledge(key: str, user: str) -> bool:
 
 
 def recent(company: str, limit: int = 100) -> pd.DataFrame:
-    """Recent ledger rows for the company (empty DataFrame if ledger absent)."""
     scope = "" if str(company).upper() == "ALL" else f"WHERE company = {_esc(company)}"
     return run(
         f"""SELECT title AS TITLE, domain AS DOMAIN, severity AS SEVERITY, kind AS KIND,

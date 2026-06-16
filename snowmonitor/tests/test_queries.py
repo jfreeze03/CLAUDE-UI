@@ -15,19 +15,17 @@ class CostQueryTests(unittest.TestCase):
     def test_warehouse_cost_alfa_excludes_trexis(self):
         sql = queries.warehouse_cost_sql(7, "ALFA")
         self.assertIn("WAREHOUSE_METERING_HISTORY", sql)
-        self.assertIn("NOT", sql)  # ALFA = NOT Trexis
-        self.assertIn("3.68", sql)  # rate embedded
-        self.assertIn("COALESCE(credits_used", sql)  # NULL-safe
+        self.assertIn("NOT", sql)
+        self.assertIn("3.68", sql)
+        self.assertIn("COALESCE(credits_used", sql)
 
-    def test_warehouse_cost_trexis_uses_allowlist(self):
-        sql = queries.warehouse_cost_sql(7, "Trexis")
-        self.assertIn("WH_TRXS_LOAD", sql)
+    def test_warehouse_cost_trexis_allowlist(self):
+        self.assertIn("WH_TRXS_LOAD", queries.warehouse_cost_sql(7, "Trexis"))
 
-    def test_warehouse_cost_all_is_unscoped(self):
-        sql = queries.warehouse_cost_sql(7, "ALL")
-        self.assertNotIn("WH_TRXS_LOAD", sql)  # no company predicate
+    def test_warehouse_cost_all_unscoped(self):
+        self.assertNotIn("WH_TRXS_LOAD", queries.warehouse_cost_sql(7, "ALL"))
 
-    def test_cost_by_dimension_allocates_by_elapsed(self):
+    def test_cost_by_dimension_allocates(self):
         sql = queries.cost_by_dimension_sql("User", 7, "ALFA")
         self.assertIn("QUERY_HISTORY", sql)
         self.assertIn("exec_ms / NULLIF(q.hour_total_ms, 0)", sql)
@@ -38,9 +36,8 @@ class CostQueryTests(unittest.TestCase):
         self.assertIn("SESSIONS", sql)
         self.assertIn("client_application_name", sql)
 
-    def test_window_is_clamped(self):
-        sql = queries.warehouse_cost_sql(9999, "ALFA")  # over MAX_LOOKBACK_DAYS
-        self.assertIn("-90,", sql)  # clamped to 90 days
+    def test_window_clamped(self):
+        self.assertIn("-90,", queries.warehouse_cost_sql(9999, "ALFA"))
 
 
 class TaskQueryTests(unittest.TestCase):
@@ -61,8 +58,6 @@ class SecurityQueryTests(unittest.TestCase):
         sql = queries.users_without_mfa_sql("ALL")
         self.assertIn("ext_authn_duo", sql)
         self.assertIn("has_password = TRUE", sql)
-        # Behavioral cross-check: must consult LOGIN_HISTORY and exclude
-        # SSO/key-pair users so it stops false-flagging them.
         self.assertIn("LOGIN_HISTORY", sql)
         self.assertIn("first_authentication_factor", sql)
         self.assertIn("has_rsa_public_key", sql)

@@ -17,13 +17,11 @@ def render() -> None:
 
     total_runs = int(graph["TOTAL_RUNS"].sum()) if not graph.empty and "TOTAL_RUNS" in graph else 0
     failed_runs = int(graph["FAILED_RUNS"].sum()) if not graph.empty and "FAILED_RUNS" in graph else 0
-    graphs = len(graph)
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("Task graphs", graphs)
+    c1.metric("Task graphs", len(graph))
     c2.metric("Total runs", total_runs)
-    c3.metric("Failed runs", failed_runs, delta=None if failed_runs == 0 else f"{failed_runs}",
-              delta_color="inverse")
+    c3.metric("Failed runs", failed_runs, delta=None if failed_runs == 0 else f"{failed_runs}", delta_color="inverse")
 
     st.subheader("Graphs (root tasks)")
     if graph.empty:

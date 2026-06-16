@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import streamlit as st
 
-import config
 from lib import session, queries, metrics, alerts, formulas, mart
 from ._common import scope, header, SEVERITY_EMOJI
 
@@ -30,8 +29,8 @@ def render() -> None:
 
     st.divider()
     left, right = st.columns([2, 1])
-
     use_mart = mart.is_available()
+
     with left:
         st.subheader("Daily spend trend")
         trend_sql = (mart.daily_spend_sql(max(days, 14), company) if use_mart

@@ -1,8 +1,7 @@
 """Per-entity anomaly detection (baselines for proactive alerts).
 
-Fixed thresholds miss the warehouse that quietly doubled while the account total
-looked flat. This compares each entity's latest value to its own trailing baseline
-(mean + std dev) and flags statistically unusual jumps. Pure pandas — fully tested.
+Compares each entity's latest value to its own trailing baseline (mean + std dev)
+and flags statistically unusual jumps. Pure pandas — fully tested.
 """
 
 from __future__ import annotations
@@ -21,14 +20,6 @@ def detect_anomalies(
     min_baseline_days: int | None = None,
     min_abs: float | None = None,
 ) -> list[dict]:
-    """Return per-entity anomalies where the latest value spikes above its baseline.
-
-    For each entity: baseline = all-but-latest daily values. Flag the latest when
-      - it has at least `min_baseline_days` of history, and
-      - it is >= `min_abs` (ignore trivial dollar/credit amounts), and
-      - z = (latest - mean) / std >= `z_threshold`
-        (or, for a flat baseline with std~0, latest >= 1.5x the baseline mean).
-    """
     z_threshold = config.ANOMALY_Z_THRESHOLD if z_threshold is None else z_threshold
     min_baseline_days = config.ANOMALY_MIN_BASELINE_DAYS if min_baseline_days is None else min_baseline_days
     min_abs = config.ANOMALY_MIN_ABS_USD if min_abs is None else min_abs
@@ -61,7 +52,6 @@ def detect_anomalies(
             z = (latest - mean) / std
             is_anom = z >= z_threshold
         else:
-            # Flat baseline: flag a clear step-up only.
             is_anom = mean > 0 and latest >= mean * 1.5
 
         if is_anom:
@@ -75,14 +65,12 @@ def detect_anomalies(
                 "baseline_days": len(baseline),
             })
 
-    # Rank by absolute latest value (biggest spike first) — works whether or not
-    # a z-score exists (flat baselines have none). z is shown in the detail.
+    # Rank by absolute latest value (biggest spike first); works with or without z.
     anomalies.sort(key=lambda a: a["latest"], reverse=True)
     return anomalies
 
 
 def to_alerts(anomalies: list[dict], domain: str, what: str, unit: str = "$"):
-    """Convert anomalies into Alert objects for the alert feed (proactive)."""
     from . import alerts as engine
     out = []
     for a in anomalies:

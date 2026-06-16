@@ -1,9 +1,4 @@
-"""Metric gathering — runs the queries that feed Overview KPIs and the alert engine.
-
-Thin orchestration over session + queries. Returns a flat dict of metric values
-that `alerts.evaluate()` consumes and the Overview page displays. Kept separate so
-both pages share one definition of "the current numbers".
-"""
+"""Metric gathering — runs the queries that feed Overview KPIs and the alert engine."""
 
 from __future__ import annotations
 
@@ -29,7 +24,6 @@ def _scalar(df: pd.DataFrame, col: str, default: float = 0.0) -> float:
 
 
 def gather(company_name: str, days: int) -> dict:
-    """Return the metric snapshot for the selected company/window."""
     from . import company as company_mod
     salt = session.refresh_salt()
     now = datetime.utcnow()
@@ -40,7 +34,6 @@ def gather(company_name: str, days: int) -> dict:
     db_scope = company_mod.company_scope_sql(company_name, wh_col=None, db_col="database_name", user_col=None)
     user_scope = company_mod.company_scope_sql(company_name, wh_col=None, db_col=None, user_col="user_name")
 
-    # Cost: MTD, today, trailing-7d avg
     cost_df = run(f"""
         SELECT
             SUM(IFF(start_time >= DATE_TRUNC('month', CURRENT_TIMESTAMP()),
@@ -55,7 +48,6 @@ def gather(company_name: str, days: int) -> dict:
           AND warehouse_name IS NOT NULL {wh_scope}
     """, tier="standard", salt=salt)
 
-    # Storage current vs ~prior window
     storage_df = run(f"""
         SELECT
             SUM(IFF(usage_date = (SELECT MAX(usage_date) FROM {AU}.DATABASE_STORAGE_USAGE_HISTORY),
@@ -67,7 +59,6 @@ def gather(company_name: str, days: int) -> dict:
           AND database_name IS NOT NULL {db_scope}
     """, tier="standard", salt=salt)
 
-    # Query health: failure rate, queued, spill
     qh_df = run(f"""
         SELECT
             COUNT(*) AS TOTAL_QUERIES,
@@ -80,7 +71,6 @@ def gather(company_name: str, days: int) -> dict:
           AND warehouse_name IS NOT NULL {q_scope}
     """, tier="standard", salt=salt)
 
-    # Tasks: failed runs
     task_df = run(f"""
         SELECT SUM(IFF(state = 'FAILED', 1, 0)) AS FAILED_TASK_RUNS
         FROM {AU}.TASK_HISTORY
@@ -88,7 +78,6 @@ def gather(company_name: str, days: int) -> dict:
           AND database_name IS NOT NULL {db_scope}
     """, tier="standard", salt=salt)
 
-    # Security: failed logins, users without MFA, new grants
     login_df = run(f"""
         SELECT COUNT(*) AS FAILED_LOGINS
         FROM {AU}.LOGIN_HISTORY
