@@ -80,6 +80,27 @@ Controls are **off by default** (generate-only). To validate execution:
 - [ ] **Cortex value strings** — confirm `SNOWFLAKE.CORTEX_USER` is the correct database role
       name in your account, and your real model identifiers for the allowlist.
 
+## 8. Cost-intelligence sources (v1.3) — verify by opening the new tabs/pages
+
+- [ ] **All services** (Cost → All services) — `METERING_DAILY_HISTORY.service_type` /
+      `credits_used`. **[H]** Account-total (no company/object grain — by design).
+- [ ] **⚠ Cortex** (Cost → Cortex AI) — `CORTEX_FUNCTIONS_USAGE_HISTORY`
+      (`model_name`/`function_name`, `tokens`, `token_credits`, `start_time`) and
+      `CORTEX_CODE_CLI_USAGE_HISTORY` (`user_name`, `tokens`, `token_credits`, `usage_date`).
+      **[M] — most likely to need column/name adjustment; views vary by region/edition.**
+      Both fail gracefully (page shows an info message, not a crash) if unavailable.
+- [ ] **Chargeback** (Cost → Chargeback) — `QUERY_HISTORY` allocation grouped by the
+      company CASE. **[H]**
+- [ ] **Storage detail** (Cost → Storage) — `TABLE_STORAGE_METRICS`
+      (`active_bytes`, `time_travel_bytes`, `failsafe_bytes`, `table_catalog`, `deleted`). **[H]**
+      Falls back to the summary storage query if unavailable.
+- [ ] **Recommendations** — `WAREHOUSE_METERING_HISTORY` + `QUERY_HISTORY` (idle %),
+      `TABLE_STORAGE_METRICS` (time-travel), `QUERY_HISTORY.query_parameterized_hash`
+      (repeated queries). **[H/M]** — confirm `query_parameterized_hash` exists. Savings are
+      **estimates**; review each fix SQL before applying.
+- [ ] **Query Explorer** — `QUERY_HISTORY` (`bytes_scanned`,
+      `bytes_spilled_to_remote_storage`, `execution_status`, `query_text`). **[H]**
+
 ## Fastest path
 
 1. §0–§1 → open every page, note empties/warnings.

@@ -34,7 +34,7 @@ class CostQueryTests(unittest.TestCase):
     def test_application_cost_joins_sessions(self):
         sql = queries.application_cost_sql(7, "ALFA")
         self.assertIn("SESSIONS", sql)
-        self.assertIn("client_application_name", sql)
+        self.assertIn("client_application_id", sql)
 
     def test_window_clamped(self):
         self.assertIn("-90,", queries.warehouse_cost_sql(9999, "ALFA"))

@@ -101,4 +101,4 @@ WAREHOUSE_TIMEOUT_MAX_S: int = 172800         # Snowflake max (2 days)
 CORTEX_USER_ROLE: str = "SNOWFLAKE.CORTEX_USER"
 
 APP_NAME = "SnowMonitor"
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.6.0"

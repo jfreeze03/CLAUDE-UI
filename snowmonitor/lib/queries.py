@@ -120,7 +120,7 @@ def application_cost_sql(days: int, company_name: str, top: int = 50) -> str:
     ),
     q AS (
         SELECT
-            COALESCE(s.client_application_name, 'Unknown') AS app,
+            COALESCE(s.client_application_id, 'Unknown') AS app,
             q.warehouse_name,
             DATE_TRUNC('hour', q.start_time) AS hr,
             q.execution_time AS exec_ms,
@@ -278,6 +278,54 @@ def recent_grants_sql(days: int, company_name: str, top: int = 200) -> str:
     FROM {AU}.GRANTS_TO_ROLES
     WHERE created_on >= {_window(days)} AND deleted_on IS NULL
     ORDER BY created_on DESC
+    LIMIT {int(top)}
+    """
+
+
+def mtd_daily_spend_sql(company_name: str) -> str:
+    """Daily total $ spend for the current calendar month (for forecasting/burndown)."""
+    scope = company.company_scope_sql(company_name, wh_col="warehouse_name", db_col=None, user_col=None)
+    return f"""
+    SELECT TO_DATE(start_time) AS USAGE_DATE,
+           {formulas.cost_sql(formulas.SQL_TOTAL_CREDITS, alias='COST_USD')}
+    FROM {AU}.WAREHOUSE_METERING_HISTORY
+    WHERE start_time >= DATE_TRUNC('month', CURRENT_TIMESTAMP())
+      AND warehouse_name IS NOT NULL {scope}
+    GROUP BY USAGE_DATE ORDER BY USAGE_DATE
+    """
+
+
+def query_search_sql(days: int, company_name: str, user_contains: str = "", warehouse_contains: str = "",
+                     status: str = "All", min_seconds: float = 0.0, top: int = 200) -> str:
+    """Ad-hoc query-history search for the Query Explorer. Inputs are sanitized."""
+    import re as _re
+    def _safe(v: str) -> str:
+        return _re.sub(r"[^A-Za-z0-9_$%.\- ]", "", str(v or "")).strip()[:128]
+    scope = company.company_scope_sql(company_name, wh_col="warehouse_name", db_col="database_name", user_col="user_name")
+    where = [f"start_time >= {_window(days)}", "warehouse_name IS NOT NULL"]
+    u, w = _safe(user_contains), _safe(warehouse_contains)
+    if u:
+        where.append(f"user_name ILIKE '%{u}%'")
+    if w:
+        where.append(f"warehouse_name ILIKE '%{w}%'")
+    if str(status).upper() == "FAILED":
+        where.append("execution_status = 'FAIL'")
+    elif str(status).upper() == "SUCCESS":
+        where.append("execution_status = 'SUCCESS'")
+    if float(min_seconds or 0) > 0:
+        where.append(f"execution_time >= {int(float(min_seconds) * 1000)}")
+    where_sql = " AND ".join(where)
+    return f"""
+    SELECT
+        start_time AS START_TIME, user_name AS USER, warehouse_name AS WAREHOUSE,
+        database_name AS DATABASE, query_type AS TYPE, execution_status AS STATUS,
+        ROUND(execution_time/1000.0, 1) AS DURATION_SEC,
+        ROUND(COALESCE(bytes_scanned,0)/POWER(1024,3), 2) AS GB_SCANNED,
+        ROUND(COALESCE(bytes_spilled_to_remote_storage,0)/POWER(1024,3), 2) AS REMOTE_SPILL_GB,
+        LEFT(query_text, 200) AS QUERY, query_id AS QUERY_ID
+    FROM {AU}.QUERY_HISTORY
+    WHERE {where_sql} {scope}
+    ORDER BY execution_time DESC
     LIMIT {int(top)}
     """
 
