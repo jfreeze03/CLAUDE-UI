@@ -27,16 +27,16 @@ def render() -> None:
         st.success("No password users at MFA risk (SSO / key-pair users excluded).")
     else:
         st.warning("These password users lack MFA and are not using SSO/key-pair. Enforce MFA/SSO.")
-        st.dataframe(mfa, width="stretch", hide_index=True)
+        st.dataframe(mfa, use_container_width=True, hide_index=True)
 
     st.subheader("Failed logins")
     if logins.empty:
         st.success("No failed logins in range.")
     else:
-        st.dataframe(logins, width="stretch", hide_index=True)
+        st.dataframe(logins, use_container_width=True, hide_index=True)
 
     st.subheader("Recent privilege grants")
     if grants.empty:
         st.info("No grants in range.")
     else:
-        st.dataframe(grants, width="stretch", hide_index=True)
+        st.dataframe(grants, use_container_width=True, hide_index=True)

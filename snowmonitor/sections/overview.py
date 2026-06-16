@@ -46,7 +46,7 @@ def render() -> None:
                   else queries.warehouse_cost_sql(days, company, top=10))
         wh = session.run(wh_sql, tier="standard", salt=session.refresh_salt())
         if not wh.empty:
-            st.dataframe(wh, width="stretch", hide_index=True)
+            st.dataframe(wh, use_container_width=True, hide_index=True)
         else:
             st.info("No warehouse metering in range.")
 

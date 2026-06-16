@@ -27,7 +27,7 @@ def render() -> None:
     if graph.empty:
         st.info("No task runs in range.")
     else:
-        st.dataframe(graph, width="stretch", hide_index=True)
+        st.dataframe(graph, use_container_width=True, hide_index=True)
 
     st.subheader("Recent runs")
     if runs.empty:
@@ -35,4 +35,4 @@ def render() -> None:
     else:
         only_failed = st.checkbox("Failures only", value=failed_runs > 0)
         view = runs[runs["STATE"] == "FAILED"] if only_failed and "STATE" in runs.columns else runs
-        st.dataframe(view, width="stretch", hide_index=True)
+        st.dataframe(view, use_container_width=True, hide_index=True)

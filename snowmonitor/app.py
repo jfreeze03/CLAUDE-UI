@@ -63,7 +63,7 @@ def _sidebar() -> None:
                      index=list(config.ENVIRONMENTS).index(st.session_state["environment"]), key="environment")
         st.slider("Lookback (days)", 1, config.MAX_LOOKBACK_DAYS, key="days")
 
-        if st.button("↻ Refresh data", width="stretch"):
+        if st.button("↻ Refresh data", use_container_width=True):
             session.bump_refresh()
             st.rerun()
 
@@ -71,7 +71,7 @@ def _sidebar() -> None:
         st.subheader("View")
         for page in sections.PAGES:
             is_active = st.session_state["page"] == page
-            if st.button(page, key=f"nav_{page}", width="stretch",
+            if st.button(page, key=f"nav_{page}", use_container_width=True,
                          type="primary" if is_active else "secondary"):
                 st.session_state["page"] = page
                 st.rerun()

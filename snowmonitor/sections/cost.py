@@ -37,7 +37,7 @@ def render() -> None:
             top = df.head(15).set_index(label_col)
             if value_col in top.columns:
                 st.bar_chart(top[value_col])
-            st.dataframe(df, width="stretch", hide_index=True)
+            st.dataframe(df, use_container_width=True, hide_index=True)
             if dim != "Warehouse":
                 st.caption("Allocated estimate — not exact billing. Warehouse metering is exact at warehouse-hour grain.")
 
@@ -47,7 +47,7 @@ def render() -> None:
             st.info("No application data in range (requires SESSIONS visibility).")
         else:
             st.bar_chart(df.head(15).set_index("APPLICATION")["ALLOCATED_COST_USD"])
-            st.dataframe(df, width="stretch", hide_index=True)
+            st.dataframe(df, use_container_width=True, hide_index=True)
 
     with tab_storage:
         df = session.run(queries.storage_by_database_sql(company), tier="standard", salt=session.refresh_salt())
@@ -55,4 +55,4 @@ def render() -> None:
             st.info("No storage data available.")
         else:
             st.bar_chart(df.head(15).set_index("DATABASE")["MONTHLY_COST_USD"])
-            st.dataframe(df, width="stretch", hide_index=True)
+            st.dataframe(df, use_container_width=True, hide_index=True)
