@@ -1,0 +1,1 @@
+"""SnowMonitor library package."""
