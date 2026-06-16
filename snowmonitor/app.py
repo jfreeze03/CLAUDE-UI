@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from lib import compat  # noqa: F401  -- applies Streamlit version shims; must be first
 import config
 from lib import session, observability
 
