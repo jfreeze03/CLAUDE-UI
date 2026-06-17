@@ -90,11 +90,13 @@ def render() -> None:
                 head = st.columns([5, 1])
                 with head[0]:
                     st.markdown(f"{_SEV.get(top_sev,'')} **{findings[0]['issue']}** · "
-                                f"{r.get('DURATION_SEC',0):.0f}s · {r.get('GB_SCANNED',0):.0f} GB scanned · "
-                                f"{r.get('REMOTE_SPILL_GB',0):.1f} GB spill · {r.get('PRUNING_PCT',0):.0f}% partitions")
+                                f"{optimize._num(r.get('DURATION_SEC')):.0f}s · "
+                                f"{optimize._num(r.get('GB_SCANNED')):.0f} GB scanned · "
+                                f"{optimize._num(r.get('REMOTE_SPILL_GB')):.1f} GB spill · "
+                                f"{optimize._num(r.get('PRUNING_PCT')):.0f}% partitions")
                     st.code(str(r.get("QUERY", ""))[:300], language="sql")
                 with head[1]:
-                    st.metric("Score", f"{r['_SCORE']:.0f}")
+                    st.metric("Score", f"{optimize._num(r['_SCORE']):.0f}")
                 for f in findings:
                     st.markdown(f"- {_SEV.get(f['severity'],'')} **{f['issue']}** — {f['guidance']}")
                 if st.button("🤖 AI optimize (Cortex)", key=f"ai_{qid}"):

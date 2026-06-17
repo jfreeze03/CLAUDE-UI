@@ -12,6 +12,8 @@ Two layers:
 
 from __future__ import annotations
 
+import math
+
 import config
 
 # Thresholds (tunable).
@@ -23,10 +25,19 @@ LONG_RUNTIME_SEC = 300.0
 
 
 def _num(v: object) -> float:
+    """Coerce to float; treat None/NaN/blank as 0.0.
+
+    NULL columns (e.g. PRUNING_PCT when partitions_total is 0) arrive as pandas
+    NaN. `nan or 0` returns nan (nan is truthy), so guard explicitly — otherwise
+    NaN propagates into the triage score and renders as 'nan'.
+    """
+    if v is None:
+        return 0.0
     try:
-        return float(v or 0)
+        f = float(v)
     except (TypeError, ValueError):
         return 0.0
+    return 0.0 if math.isnan(f) else f
 
 
 def optimization_findings(stats: dict) -> list[dict]:

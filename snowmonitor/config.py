@@ -50,6 +50,7 @@ THRESHOLDS: dict[str, float] = {
     "failed_logins_warn": 20,
     "users_without_mfa_warn": 1,
     "new_grants_warn": 25,
+    "failed_login_burst_warn": 5,   # per-user failed logins that flag an ATO candidate
 }
 
 DEFAULT_LOOKBACK_DAYS: int = 7
@@ -104,4 +105,4 @@ CORTEX_USER_ROLE: str = "SNOWFLAKE.CORTEX_USER"
 CORTEX_OPTIMIZE_MODEL: str = "llama3.1-70b"
 
 APP_NAME = "SnowMonitor"
-APP_VERSION = "1.9.0"
+APP_VERSION = "1.10.0"

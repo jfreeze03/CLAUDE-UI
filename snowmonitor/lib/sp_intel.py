@@ -118,13 +118,18 @@ def heavy_query_sql(days: int, company_name: str, top: int = 100) -> str:
         ROUND(COALESCE(bytes_spilled_to_local_storage, 0) / POWER(1024, 3), 2) AS LOCAL_SPILL_GB,
         ROUND(COALESCE(percentage_scanned_from_cache, 0) * 100, 1) AS CACHE_PCT,
         partitions_scanned AS PARTITIONS_SCANNED, partitions_total AS PARTITIONS_TOTAL,
-        ROUND(partitions_scanned / NULLIF(partitions_total, 0) * 100, 1) AS PRUNING_PCT,
+        COALESCE(ROUND(partitions_scanned / NULLIF(partitions_total, 0) * 100, 1), 0) AS PRUNING_PCT,
         LEFT(query_text, 250) AS QUERY
     FROM {AU}.QUERY_HISTORY
     WHERE start_time >= {_win(days)} AND warehouse_name IS NOT NULL AND execution_time > 0 {scope}
+      -- Real optimizable statements only: drop CALL rows (covered in the SP tab) and
+      -- interactive/session rows (e.g. the app's own 'execute streamlit ...') that log
+      -- long elapsed time but do no scan work — they're noise, not optimization targets.
+      AND query_type NOT IN ('CALL')
+      AND query_text NOT ILIKE 'execute streamlit%'
       AND (COALESCE(bytes_spilled_to_remote_storage, 0) > 0
            OR COALESCE(bytes_scanned, 0) > POWER(1024, 3) * 50
-           OR total_elapsed_time > 60000)
+           OR (total_elapsed_time > 120000 AND COALESCE(bytes_scanned, 0) > POWER(1024, 2)))
     ORDER BY REMOTE_SPILL_GB DESC, DURATION_SEC DESC
     LIMIT {int(top)}
     """

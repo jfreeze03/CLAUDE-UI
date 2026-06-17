@@ -8,8 +8,8 @@ from lib import session, queries, mart, cost_intel, formulas
 from ._common import scope, header
 
 
-def _df(sql, tier="standard"):
-    return session.run(sql, tier=tier, salt=session.refresh_salt())
+def _df(sql, tier="standard", quiet=False):
+    return session.run(sql, tier=tier, salt=session.refresh_salt(), quiet=quiet)
 
 
 def render() -> None:
@@ -110,16 +110,17 @@ def render() -> None:
     # ---- Cortex AI + Cortex Code ----
     with t_cortex:
         st.subheader("Cortex functions / models")
-        cf = _df(cost_intel.cortex_functions_cost_sql(days))
+        cf = _df(cost_intel.cortex_functions_cost_sql(days), quiet=True)
         if cf.empty:
             st.info("No Cortex function usage in range (or view not available — see VALIDATION §3).")
         else:
             st.bar_chart(cf.head(15).set_index("MODEL_OR_FUNCTION")["COST_USD"])
             st.dataframe(cf, use_container_width=True, hide_index=True)
         st.subheader("Cortex Code (CLI) by user")
-        cc = _df(cost_intel.cortex_code_cost_sql(days))
+        cc = _df(cost_intel.cortex_code_cost_sql(days), quiet=True)
         if cc.empty:
-            st.info("No Cortex Code usage in range (or view not available).")
+            st.info("No Cortex Code usage in range — this is a newer ACCOUNT_USAGE view whose "
+                    "columns vary by account/region; it degrades silently if unavailable. See VALIDATION §3/§8.")
         else:
             st.dataframe(cc, use_container_width=True, hide_index=True)
 

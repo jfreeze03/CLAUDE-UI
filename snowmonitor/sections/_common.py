@@ -24,3 +24,16 @@ def header(title: str, subtitle: str = "") -> None:
 
 
 SEVERITY_EMOJI = {"Critical": "🔴", "High": "🟠", "Medium": "🟡", "Low": "⚪"}
+
+
+def md_escape(text: object) -> str:
+    """Escape Markdown specials so dynamic text renders literally.
+
+    Critically prevents '$' (which Streamlit reads as LaTeX math) and '_'/'*'
+    (italics/bold) in values like '$1,220/mo' or 'AUTO_SUSPEND' from garbling.
+    """
+    s = str(text if text is not None else "")
+    for ch in ("\\", "$", "_", "*", "`"):
+        s = s.replace(ch, "\\" + ch)
+    return s
+

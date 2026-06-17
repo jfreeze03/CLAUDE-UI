@@ -78,12 +78,19 @@ def _q_metadata(sql: str, _salt: str = "") -> pd.DataFrame:
 _TIERS = {"live": _q_live, "standard": _q_standard, "historical": _q_historical, "metadata": _q_metadata}
 
 
-def run(sql: str, tier: str = "standard", salt: str = "") -> pd.DataFrame:
+def run(sql: str, tier: str = "standard", salt: str = "", quiet: bool = False) -> pd.DataFrame:
+    """Run SQL and return a DataFrame (empty on error, never raises).
+
+    quiet=True suppresses the failure banner — use it for optional/preview
+    sources (e.g. Cortex usage views) whose schema or availability varies by
+    account, so a missing view degrades silently instead of flashing an error.
+    """
     fn = _TIERS.get(tier, _q_standard)
     try:
         return fn(sql, salt)
     except Exception as exc:
-        st.warning(f"Query failed ({tier}): {str(exc)[:240]}")
+        if not quiet:
+            st.warning(f"Query failed ({tier}): {str(exc)[:240]}")
         return pd.DataFrame()
 
 

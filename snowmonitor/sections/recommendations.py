@@ -5,7 +5,7 @@ from __future__ import annotations
 import streamlit as st
 
 from lib import session, recommend, formulas, cost_intel, mart
-from ._common import scope, header, SEVERITY_EMOJI
+from ._common import scope, header, SEVERITY_EMOJI, md_escape
 
 
 def _rows(df):
@@ -57,8 +57,8 @@ def render() -> None:
         with st.container(border=True):
             top = st.columns([5, 1])
             with top[0]:
-                st.markdown(f"{SEVERITY_EMOJI.get(r.severity,'')} **{r.title}** · _{r.category}_")
-                st.write(r.detail)
+                st.markdown(f"{SEVERITY_EMOJI.get(r.severity,'')} **{md_escape(r.title)}** · _{r.category}_")
+                st.markdown(md_escape(r.detail))
             with top[1]:
                 st.metric("Save/mo", formulas.fmt_usd(r.monthly_savings_usd))
             with st.expander("Fix SQL"):

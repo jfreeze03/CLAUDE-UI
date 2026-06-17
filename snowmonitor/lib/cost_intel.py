@@ -75,7 +75,15 @@ def cortex_functions_cost_sql(days: int, top: int = 50) -> str:
 
 
 def cortex_code_cost_sql(days: int, top: int = 50) -> str:
-    """Cortex Code (CLI) token credits + $ by user."""
+    """Cortex Code (CLI) token credits + $ by user.
+
+    NOTE: CORTEX_CODE_CLI_USAGE_HISTORY is a newer ACCOUNT_USAGE view whose exact
+    column names (time column, token columns) vary by account/region and are NOT
+    verified here. Callers run this with quiet=True so a wrong column / missing
+    view degrades silently to "no usage" instead of an error banner. To enable it,
+    confirm the real columns in your account (DESC VIEW ...) and edit below.
+    See VALIDATION §3/§8.
+    """
     return f"""
     SELECT
         user_name AS USER,

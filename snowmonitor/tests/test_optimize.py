@@ -1,5 +1,6 @@
 """Tests for the SP intelligence + optimization engine."""
 
+import math
 import sys
 import unittest
 from pathlib import Path
@@ -42,6 +43,12 @@ class SpSqlTests(unittest.TestCase):
         self.assertIn("PRUNING_PCT", sql)
         self.assertIn("partitions_scanned", sql)
 
+    def test_heavy_query_excludes_noise_and_coalesces_pruning(self):
+        sql = sp_intel.heavy_query_sql(7, "ALFA")
+        self.assertIn("query_type NOT IN ('CALL')", sql)        # procs handled in SP tab
+        self.assertIn("execute streamlit%", sql)                # drop the app's own sessions
+        self.assertIn("COALESCE(ROUND(partitions_scanned", sql)  # no NULL/NaN pruning
+
 
 class FindingsTests(unittest.TestCase):
     def test_spill_is_high(self):
@@ -66,6 +73,19 @@ class FindingsTests(unittest.TestCase):
         bad = optimize.triage_score({"REMOTE_SPILL_GB": 50, "GB_SCANNED": 500, "PRUNING_PCT": 100, "DURATION_SEC": 600})
         ok = optimize.triage_score({"REMOTE_SPILL_GB": 0, "GB_SCANNED": 5, "PRUNING_PCT": 10, "DURATION_SEC": 20})
         self.assertGreater(bad, ok)
+
+    def test_num_is_nan_safe(self):
+        self.assertEqual(optimize._num(float("nan")), 0.0)
+        self.assertEqual(optimize._num(None), 0.0)
+        self.assertEqual(optimize._num(""), 0.0)
+        self.assertEqual(optimize._num("7"), 7.0)
+
+    def test_triage_score_never_nan_with_null_pruning(self):
+        # PRUNING_PCT can arrive NaN (NULL partitions_total) — score must stay numeric.
+        s = optimize.triage_score({"REMOTE_SPILL_GB": float("nan"), "GB_SCANNED": float("nan"),
+                                   "PRUNING_PCT": float("nan"), "DURATION_SEC": 1001})
+        self.assertFalse(math.isnan(s))
+        self.assertEqual(s, round(1001 * 0.1, 2))
 
 
 class CortexTests(unittest.TestCase):

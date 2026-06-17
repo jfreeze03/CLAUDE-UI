@@ -10,7 +10,7 @@ import streamlit as st
 
 from lib import session, queries, metrics, alerts, formulas, mart, forecast
 import config
-from ._common import scope, header, SEVERITY_EMOJI
+from ._common import scope, header, SEVERITY_EMOJI, md_escape
 
 
 def render() -> None:
@@ -64,8 +64,8 @@ def render() -> None:
         else:
             for a in fired[:8]:
                 with st.container(border=True):
-                    st.markdown(f"{SEVERITY_EMOJI.get(a.severity,'')} **{a.title}** · {a.kind}")
-                    st.caption(a.detail)
+                    st.markdown(f"{SEVERITY_EMOJI.get(a.severity,'')} **{md_escape(a.title)}** · {a.kind}")
+                    st.caption(md_escape(a.detail))
             if summary["total"] > 8:
                 st.caption(f"+{summary['total'] - 8} more on the Alerts page.")
 

@@ -60,6 +60,11 @@ Everything that depends on *your* account, in one place. Work top to bottom on a
 - [ ] **6.2 Spend** — compare MTD to Snowsight cost view. Gap ⇒ wrong rate/scope.
 - [ ] **6.3 MFA list** — are flagged users actually unprotected? Known SSO users appearing ⇒ fix §3.
 - [ ] **6.4 Task failures / 6.5 Alerts** — do they match reality / are thresholds tuned?
+- [ ] **6.6 Security detections (Tier 1)** — tune for false positives: **[M]**
+  - `failed_login_burst_warn` (config, default 5) sets the ATO failed-login threshold.
+  - **New-IP** uses a 30d baseline (`security_intel.NEW_IP_BASELINE_DAYS`); short history ⇒ noisy. VPN/dynamic IPs fire benignly — Acknowledge dismisses them via the ledger.
+  - **Single-factor** depends on `first_authentication_factor='PASSWORD'` strings (see §3); confirm your account's values.
+  - **Privilege escalation** reads `GRANTS_TO_ROLES` account-wide (grants aren't company-scoped). `ADMIN_ROLES`/OWNERSHIP weighting is in `security_intel.py`.
 
 ## 7. Controls (run on a PRIVILEGED connection) — **state-changing, test carefully**
 
