@@ -15,6 +15,7 @@ from lib import session, observability
 st.set_page_config(page_title=f"{config.APP_NAME}", page_icon="❄", layout="wide")
 
 import sections  # noqa: E402
+from sections._common import inject_global_styles  # noqa: E402
 
 
 def _init_state() -> None:
@@ -44,7 +45,7 @@ def _apply_access() -> None:
 def _sidebar() -> None:
     with st.sidebar:
         st.title(f"❄ {config.APP_NAME}")
-        st.caption(f"v{config.APP_VERSION} · Snowflake monitoring")
+        st.caption(f"v{config.APP_VERSION} · Snowflake observability")
         st.divider()
         st.subheader("Scope")
 
@@ -81,8 +82,12 @@ def _sidebar() -> None:
         company = st.session_state["company"]
         color = config.COMPANIES.get(company, {}).get("color", "#94a3b8")
         st.markdown(
-            f"<div style='font-size:0.8rem'>Active: <b style='color:{color}'>{company}</b> · "
-            f"{st.session_state['environment']} · {st.session_state['days']}d</div>",
+            "<div style='padding:0.85rem 0.9rem;border:1px solid rgba(148,163,184,0.22);"
+            "border-radius:18px;background:rgba(15,23,42,0.74);font-size:0.86rem;'>"
+            "<div style='color:#94a3b8;text-transform:uppercase;letter-spacing:0.1em;"
+            "font-size:0.68rem;margin-bottom:0.25rem;'>Active scope</div>"
+            f"<b style='color:{color}'>{company}</b> · {st.session_state['environment']} · "
+            f"{st.session_state['days']}d</div>",
             unsafe_allow_html=True,
         )
         st.caption(config.ACCOUNT_USAGE_FRESHNESS)
@@ -91,6 +96,7 @@ def _sidebar() -> None:
 def main() -> None:
     _init_state()
     _apply_access()
+    inject_global_styles()
     _sidebar()
     sections.render(st.session_state["page"])
 
