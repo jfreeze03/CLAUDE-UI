@@ -1,4 +1,8 @@
-"""Task Graphs — freshness/SLA, active failures, duration degradation, cost, DAGs."""
+"""Task Graphs — freshness/SLA, active failures, duration degradation, cost, DAGs.
+
+Top KPIs use the shared SLA/health/state queries; each sub-view loads only its own
+extra query (no eager st.tabs), keeping the page fast.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +10,7 @@ import pandas as pd
 import streamlit as st
 
 from lib import session, queries, tasks_intel, tasks_logic, anomaly
-from ._common import scope, header
+from ._common import (scope, header, subview, kpi_row, render_table, alt_bar, empty, loading)
 
 
 _STATUS_EMOJI = {"On time": "🟢", "Late": "🟡", "Stale": "🔴", "Unknown": "⚪"}
@@ -33,9 +37,10 @@ def render() -> None:
     company, env, days = scope()
     header("Task Graphs", "Freshness, active failures, duration drift, and cost — not just run counts.")
 
-    sla = _df(tasks_intel.task_sla_sql(days, company))
-    health = _df(tasks_intel.task_health_sql(days, company))
-    states = _df(tasks_intel.recent_task_states_sql(days, company))
+    with loading("Loading task health…"):
+        sla = _df(tasks_intel.task_sla_sql(days, company))
+        health = _df(tasks_intel.task_health_sql(days, company))
+        states = _df(tasks_intel.recent_task_states_sql(days, company))
     consec = _consecutive(states)
 
     if not sla.empty:
@@ -52,88 +57,92 @@ def render() -> None:
     success_pct = round(succ * 100.0 / runs, 1) if runs else 0
     broken = int((consec["CONSECUTIVE_FAILURES"] >= 2).sum()) if not consec.empty else 0
 
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Tasks", total_tasks)
-    c2.metric("Success rate", f"{success_pct:.0f}%")
-    c3.metric("🔴 Stale (overdue)", sla_summary["Stale"],
-              delta=None if sla_summary["Stale"] == 0 else "fresh data at risk", delta_color="inverse")
-    c4.metric("Actively broken", broken,
-              delta=None if broken == 0 else "≥2 consecutive fails", delta_color="inverse")
-    c5.metric("Failed runs", failed_runs)
+    kpi_row([
+        {"label": "Tasks", "value": total_tasks},
+        {"label": "Success rate", "value": f"{success_pct:.0f}%",
+         "status": "ok" if success_pct >= 99 else ("med" if success_pct >= 95 else "high"),
+         "good": success_pct >= 99},
+        {"label": "Stale (overdue)", "value": sla_summary["Stale"],
+         "status": "crit" if sla_summary["Stale"] else "ok", "good": sla_summary["Stale"] == 0},
+        {"label": "Actively broken", "value": broken,
+         "status": "high" if broken else "ok", "good": broken == 0,
+         "help": "≥2 consecutive failures"},
+        {"label": "Failed runs", "value": failed_runs,
+         "status": "med" if failed_runs else "ok"},
+    ])
 
-    t_fresh, t_fail, t_dur, t_cost, t_graph = st.tabs(
-        ["Freshness / SLA", "Failures", "Duration", "Cost", "Graphs"])
+    view = subview(["Freshness / SLA", "Failures", "Duration", "Cost", "Graphs"], key="tasks")
 
     # ---- Freshness / SLA ----
-    with t_fresh:
+    if view == "Freshness / SLA":
         st.caption("Time since last success vs each task's own cadence. Stale = pipeline likely stopped.")
-        s1, s2, s3, s4 = st.columns(4)
-        s1.metric("🟢 On time", sla_summary["On time"])
-        s2.metric("🟡 Late", sla_summary["Late"])
-        s3.metric("🔴 Stale", sla_summary["Stale"])
-        s4.metric("⚪ Unknown cadence", sla_summary["Unknown"])
+        kpi_row([
+            {"label": "🟢 On time", "value": sla_summary["On time"], "status": "ok"},
+            {"label": "🟡 Late", "value": sla_summary["Late"], "status": "med" if sla_summary["Late"] else "ok"},
+            {"label": "🔴 Stale", "value": sla_summary["Stale"], "status": "crit" if sla_summary["Stale"] else "ok"},
+            {"label": "⚪ Unknown cadence", "value": sla_summary["Unknown"]},
+        ])
         if sla.empty:
-            st.info("No task runs in range.")
+            empty("No task runs in range.")
         else:
             sla_view = sla.copy()
             sla_view.insert(0, "", sla_view["STATUS"].map(lambda s: _STATUS_EMOJI.get(s, "")))
-            # Stale/Late first
             order = {"Stale": 0, "Late": 1, "Unknown": 2, "On time": 3}
             sla_view = sla_view.sort_values("STATUS", key=lambda col: col.map(order))
-            st.dataframe(sla_view, use_container_width=True, hide_index=True)
+            render_table(sla_view)
 
     # ---- Failures ----
-    with t_fail:
+    elif view == "Failures":
         st.subheader("Actively broken (consecutive failures)")
         if consec.empty:
             st.success("No task is currently in a failure streak.")
         else:
-            st.dataframe(consec, use_container_width=True, hide_index=True)
+            render_table(consec)
         st.subheader("Failure clusters (by error)")
         errors = _df(tasks_intel.error_clusters_sql(days, company))
         if errors.empty:
             st.success("No task failures in range.")
         else:
-            st.dataframe(errors, use_container_width=True, hide_index=True)
+            render_table(errors)
             st.caption("One error across many tasks ⇒ a systemic cause (permissions, source, warehouse).")
 
     # ---- Duration ----
-    with t_dur:
+    elif view == "Duration":
         st.caption("p95 duration and tasks running slower than their own baseline.")
         dur_daily = _df(tasks_intel.task_duration_daily_sql(days, company))
         anoms = anomaly.detect_anomalies(dur_daily, "TASK", "AVG_DURATION_SEC", "USAGE_DATE",
                                          min_abs=30, min_baseline_days=4) if not dur_daily.empty else []
         if anoms:
             st.warning(f"{len(anoms)} task(s) ran notably slower than baseline:")
-            st.dataframe(pd.DataFrame(anoms)[["entity", "latest", "baseline_mean", "pct_above_mean"]]
+            render_table(pd.DataFrame(anoms)[["entity", "latest", "baseline_mean", "pct_above_mean"]]
                          .rename(columns={"entity": "TASK", "latest": "LATEST_SEC",
-                                          "baseline_mean": "BASELINE_SEC", "pct_above_mean": "PCT_ABOVE"}),
-                         use_container_width=True, hide_index=True)
+                                          "baseline_mean": "BASELINE_SEC", "pct_above_mean": "PCT_ABOVE"}))
         if not health.empty:
             st.subheader("Per-task duration & success")
-            cols = [c for c in ["TASK", "DATABASE", "RUNS", "SUCCESS_PCT", "AVG_DURATION_SEC", "P95_DURATION_SEC", "LAST_RUN"]
-                    if c in health.columns]
-            st.dataframe(health[cols].sort_values("P95_DURATION_SEC", ascending=False) if "P95_DURATION_SEC" in health.columns
-                         else health[cols], use_container_width=True, hide_index=True)
+            cols = [c for c in ["TASK", "DATABASE", "RUNS", "SUCCESS_PCT", "AVG_DURATION_SEC",
+                                "P95_DURATION_SEC", "LAST_RUN"] if c in health.columns]
+            view_df = (health[cols].sort_values("P95_DURATION_SEC", ascending=False)
+                       if "P95_DURATION_SEC" in health.columns else health[cols])
+            render_table(view_df)
         else:
-            st.info("No task runs in range.")
+            empty("No task runs in range.")
 
     # ---- Cost ----
-    with t_cost:
+    elif view == "Cost":
         st.caption("Serverless task credits. Warehouse-run tasks bill via warehouse metering (see Cost).")
         cost = _df(tasks_intel.serverless_task_cost_sql(days, company))
         if cost.empty:
-            st.info("No serverless task cost in range (or no serverless tasks).")
+            empty("No serverless task cost in range (or no serverless tasks).")
         else:
             if "COST_USD" in cost.columns and "TASK" in cost.columns:
-                st.bar_chart(cost.head(15).set_index("TASK")["COST_USD"])
-            st.dataframe(cost, use_container_width=True, hide_index=True)
+                alt_bar(cost, x="TASK", y="COST_USD", money=True, top=15)
+            render_table(cost)
 
     # ---- Graphs ----
-    with t_graph:
+    elif view == "Graphs":
         graph = _df(queries.task_graph_sql(days, company))
         if graph.empty:
-            st.info("No task graphs in range.")
+            empty("No task graphs in range.")
         else:
-            st.dataframe(graph, use_container_width=True, hide_index=True)
-            st.caption("Per root task: runs, failures, avg duration. High FAILED_RUNS ⇒ inspect the failing member.")
+            render_table(graph)
+            st.caption("Per root task: runs, failures, avg duration. High Failed Runs ⇒ inspect the failing member.")

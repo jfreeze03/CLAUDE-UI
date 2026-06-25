@@ -90,7 +90,14 @@ def run(sql: str, tier: str = "standard", salt: str = "", quiet: bool = False) -
         return fn(sql, salt)
     except Exception as exc:
         if not quiet:
-            st.warning(f"Query failed ({tier}): {str(exc)[:240]}")
+            st.warning("Couldn't load some data for this view. The rest of the page is unaffected.")
+            with st.expander("Technical details"):
+                st.caption(f"{type(exc).__name__}: {str(exc)[:300]}")
+        try:
+            from . import observability
+            observability.log_error("query", exc)
+        except Exception:
+            pass
         return pd.DataFrame()
 
 

@@ -1,58 +1,79 @@
-"""Alerts — proactive + reactive alert list, anomalies, ledger history, ALERT SQL."""
+"""Alerts & Risks — unified issue feed, ledger history, server-side ALERT SQL."""
 
 from __future__ import annotations
 
+import streamlit as st
+
 import config
-from lib import metrics, alerts as engine, queries, anomaly, ledger, mart, session, observability
-from ._common import scope, header, SEVERITY_EMOJI
+from lib import issues, queries, ledger, observability, alerts as engine
+from ._common import (scope, header, kpi_row, issue_card, empty, loading, SEVERITY_EMOJI, md_escape)
 
 
-def _spend_anomaly_alerts(company: str, days: int) -> list:
-    if not mart.is_available():
-        return []  # per-day baseline needs the mart's daily grain
-    df = session.run(mart.warehouse_daily_for_anomaly_sql(days, company), tier="standard", salt=session.refresh_salt())
-    if df.empty:
-        return []
-    found = anomaly.detect_anomalies(df, "WAREHOUSE", "COST_USD", "USAGE_DATE")
-    return anomaly.to_alerts(found, "Cost", "Warehouse spend")
+def _goto(page: str):
+    def _f():
+        st.session_state["page"] = page
+        st.rerun()
+    return _f
+
+
+def _ack(domain: str, title: str, company: str, a):
+    def _f():
+        ledger.record([a], company)
+        ledger.acknowledge(ledger.alert_key(domain, title, company), observability.current_user())
+        st.rerun()
+    return _f
 
 
 def render() -> None:
     company, env, days = scope()
-    header("Alerts", "Proactive (forecast/trend/anomaly) and reactive (current failures).")
+    header("Alerts & Risks", "Every open issue across cost, performance, tasks, and security — ranked.")
 
-    m = metrics.gather(company, days)
-    fired = engine.evaluate(m) + _spend_anomaly_alerts(company, days)
-    fired.sort(key=lambda a: ({"Critical": 0, "High": 1, "Medium": 2, "Low": 3}.get(a.severity, 9), a.domain))
-    summary = engine.summarize(fired)
-    ledger.record(fired, company)  # best-effort; no-op if ledger not deployed
+    with loading("Evaluating alerts and detections…"):
+        feed = issues.gather_issues(company, days)
+    summary = issues.counts(feed)
+    st.session_state["_issue_counts"] = summary
+    ledger.record(feed, company)
 
-    import streamlit as st
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("🔴 Critical", summary["Critical"])
-    c2.metric("🟠 High", summary["High"])
-    c3.metric("🟡 Medium", summary["Medium"])
-    c4.metric("Total", summary["total"])
-
-    proactive = [a for a in fired if a.kind == engine.PROACTIVE]
-    reactive = [a for a in fired if a.kind == engine.REACTIVE]
+    kpi_row([
+        {"label": "Critical", "value": summary["Critical"], "status": "crit" if summary["Critical"] else "ok",
+         "good": summary["Critical"] == 0},
+        {"label": "High", "value": summary["High"], "status": "high" if summary["High"] else "ok",
+         "good": summary["High"] == 0},
+        {"label": "Medium", "value": summary["Medium"], "status": "med" if summary["Medium"] else "ok"},
+        {"label": "Total open", "value": summary["total"], "status": "neutral"},
+    ])
 
     st.divider()
+    _DOMAIN_PAGE = {"Cost": "Cost", "Tasks": "Task Graphs", "Security": "Security",
+                    "Performance": "Query Explorer"}
+
+    proactive = [a for a in feed if a.kind == engine.PROACTIVE]
+    reactive = [a for a in feed if a.kind == engine.REACTIVE]
+
     col_p, col_r = st.columns(2)
     with col_p:
         st.subheader(f"Proactive ({len(proactive)})")
         st.caption("Fires before a budget/SLA is breached.")
-        _render_alert_list(proactive)
+        if not proactive:
+            empty("Nothing trending toward a breach.")
+        for i, a in enumerate(proactive):
+            issue_card(a.severity, a.domain, a.title, a.detail, a.action, key=f"p_{i}",
+                       on_investigate=_goto(_DOMAIN_PAGE.get(a.domain, "Cost")))
     with col_r:
         st.subheader(f"Reactive ({len(reactive)})")
-        st.caption("Fires on current failures.")
-        _render_alert_list(reactive)
+        st.caption("Fires on current failures and detections.")
+        if not reactive:
+            empty("No active failures or detections.")
+        for i, a in enumerate(reactive):
+            issue_card(a.severity, a.domain, a.title, a.detail, a.action, key=f"r_{i}",
+                       on_investigate=_goto(_DOMAIN_PAGE.get(a.domain, "Security")),
+                       on_ack=_ack(a.domain, a.title, company, a))
 
     st.divider()
     st.subheader("Alert history")
     hist = ledger.recent(company)
     if hist.empty:
-        st.caption("No alert history yet (deploy setup/setup.sql to enable the ledger).")
+        empty("No alert history yet (deploy setup/setup.sql to enable the ledger).")
     else:
         open_rows = hist[hist["STATUS"] != "ACK"] if "STATUS" in hist.columns else hist
         st.caption(f"{len(hist)} tracked · {len(open_rows)} open. Acknowledge to mute until it recurs.")
@@ -61,12 +82,12 @@ def render() -> None:
             with cc1:
                 emj = SEVERITY_EMOJI.get(row.get("SEVERITY", ""), "")
                 status = row.get("STATUS", "OPEN")
-                st.markdown(f"{emj} **{row.get('TITLE','')}** · {row.get('DOMAIN','')} · "
+                st.markdown(f"{emj} **{md_escape(row.get('TITLE',''))}** · {row.get('DOMAIN','')} · "
                             f"runs={int(row.get('RUNS',0) or 0)} · _{status}_")
                 st.caption(f"first {row.get('FIRST_SEEN','')} · last {row.get('LAST_SEEN','')}"
                            + (f" · ack by {row.get('ACK_BY','')}" if status == "ACK" else ""))
             with cc2:
-                if status != "ACK" and st.button("Ack", key=f"ack_{row.get('ALERT_KEY','')}"):
+                if status != "ACK" and st.button("Ack", key=f"hack_{row.get('ALERT_KEY','')}"):
                     ledger.acknowledge(row.get("ALERT_KEY", ""), observability.current_user())
                     st.rerun()
 
@@ -91,16 +112,3 @@ def render() -> None:
             recipients=recipients, integration=integration,
         )
         st.code(sql, language="sql")
-
-
-def _render_alert_list(items) -> None:
-    import streamlit as st
-    if not items:
-        st.success("None.")
-        return
-    for a in items:
-        with st.container(border=True):
-            st.markdown(f"{SEVERITY_EMOJI.get(a.severity,'')} **{a.title}** — {a.domain}")
-            st.write(a.detail)
-            st.caption(f"Value: {a.value} (threshold {a.threshold})")
-            st.caption(f"→ {a.action}")

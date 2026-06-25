@@ -5,7 +5,7 @@ from __future__ import annotations
 import streamlit as st
 
 from lib import session, recommend, formulas, cost_intel, mart
-from ._common import scope, header, SEVERITY_EMOJI, md_escape
+from ._common import scope, header, SEVERITY_EMOJI, md_escape, kpi_row
 
 
 def _rows(df):
@@ -39,10 +39,13 @@ def render() -> None:
     )
     total = recommend.total_savings(recs)
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Recommendations", len(recs))
-    c2.metric("Est. monthly savings", formulas.fmt_usd(total))
-    c3.metric("Est. annual savings", formulas.fmt_usd(total * 12))
+    kpi_row([
+        {"label": "Recommendations", "value": len(recs)},
+        {"label": "Est. monthly savings", "value": formulas.fmt_usd(total),
+         "status": "ok" if total > 0 else "neutral"},
+        {"label": "Est. annual savings", "value": formulas.fmt_usd(total * 12),
+         "status": "ok" if total > 0 else "neutral"},
+    ])
 
     if not recs:
         st.success("No cost-saving opportunities detected above threshold. (Needs warehouse/storage/query history.)")

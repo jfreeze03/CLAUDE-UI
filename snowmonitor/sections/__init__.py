@@ -7,11 +7,19 @@ import streamlit as st
 from . import (overview, cost, tasks, security, alerts as alerts_page,
                controls, recommendations, explorer, digest, optimize)
 
-PAGES = ["Overview", "Cost", "Recommendations", "Optimization", "Query Explorer",
-         "Digest", "Task Graphs", "Security", "Alerts", "Controls"]
+# Grouped navigation — mirrors how a DBA works: monitor -> investigate -> act -> report.
+NAV_GROUPS = [
+    ("Monitor", ["Command Center", "Alerts"]),
+    ("Investigate", ["Cost", "Task Graphs", "Security", "Query Explorer"]),
+    ("Act", ["Recommendations", "Optimization", "Controls"]),
+    ("Report", ["Digest"]),
+]
+
+PAGES = [p for _g, items in NAV_GROUPS for p in items]
 
 _RENDER = {
-    "Overview": overview.render,
+    "Command Center": overview.render,
+    "Overview": overview.render,  # back-compat alias
     "Cost": cost.render,
     "Recommendations": recommendations.render,
     "Optimization": optimize.render,
@@ -29,8 +37,9 @@ def render(page: str) -> None:
     try:
         fn()
     except Exception as exc:  # never crash the whole app on one page
-        st.error(f"{page} could not render.")
-        st.caption(str(exc)[:300])
+        st.error(f"{page} couldn't load. The rest of the app is unaffected.")
+        with st.expander("Technical details"):
+            st.caption(str(exc)[:400])
         try:
             from lib import observability
             observability.log_error(page, exc)

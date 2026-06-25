@@ -12,7 +12,7 @@ import pandas as pd
 import streamlit as st
 
 from lib import session, queries, security_intel as sec, ledger
-from ._common import scope, header, SEVERITY_EMOJI, md_escape
+from ._common import scope, header, SEVERITY_EMOJI, md_escape, kpi_row, render_table, empty, loading
 
 _SALT = None
 
@@ -45,7 +45,7 @@ def _detection(company: str, title: str, assessment: dict, evidence_df, empty_ms
         st.markdown(md_escape(a.detail))
         st.caption(f"Why it fired (the metrics) · threshold {md_escape(a.threshold)}")
         if evidence_df is not None and not evidence_df.empty:
-            st.dataframe(evidence_df, use_container_width=True, hide_index=True)
+            render_table(evidence_df)
         st.caption(f"Suggested action: {md_escape(a.action)}")
         key = ledger.alert_key(a.domain, a.title, company)
         cols = st.columns([1, 3])
@@ -63,10 +63,11 @@ def render() -> None:
     header("Security", "Evidence-first threat detections, then MFA / login / grant posture.")
 
     # --- Run all detections ---
-    tko_df = _df(sec.takeover_candidates_sql(days, company))
-    sf_df = _df(sec.single_factor_logins_sql(days, company))
-    grants_df = _df(sec.privilege_grants_sql(days))
-    newip_df = _df(sec.new_ip_logins_sql(days, company))
+    with loading("Running threat detections…"):
+        tko_df = _df(sec.takeover_candidates_sql(days, company))
+        sf_df = _df(sec.single_factor_logins_sql(days, company))
+        grants_df = _df(sec.privilege_grants_sql(days))
+        newip_df = _df(sec.new_ip_logins_sql(days, company))
 
     tko = sec.assess_takeover([] if tko_df.empty else tko_df.to_dict("records"))
     sf = sec.assess_single_factor([] if sf_df.empty else sf_df.to_dict("records"))
@@ -76,12 +77,16 @@ def render() -> None:
     fired = [x for x in (tko, sf, gr, nip) if x.get("fired")]
     crit = sum(1 for x in fired if x.get("severity") == "High")
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Detections firing", len(fired), delta=f"{crit} high" if crit else None, delta_color="inverse")
-    c2.metric("ATO candidates", tko.get("count", 0) if tko.get("fired") else 0,
-              delta=f"{tko.get('compromised', 0)} w/ success-after" if tko.get("compromised") else None,
-              delta_color="inverse")
-    c3.metric("Single-factor users", sf.get("count", 0) if sf.get("fired") else 0)
+    kpi_row([
+        {"label": "Detections firing", "value": len(fired),
+         "status": "high" if fired else "ok", "good": len(fired) == 0,
+         "delta": f"{crit} high" if crit else None},
+        {"label": "ATO candidates", "value": tko.get("count", 0) if tko.get("fired") else 0,
+         "status": "crit" if tko.get("compromised") else ("high" if tko.get("fired") else "ok"),
+         "delta": f"{tko.get('compromised', 0)} w/ success-after" if tko.get("compromised") else None},
+        {"label": "Single-factor users", "value": sf.get("count", 0) if sf.get("fired") else 0,
+         "status": "med" if sf.get("fired") else "ok"},
+    ])
 
     st.subheader("Threat detections")
     st.caption("Each card shows the metrics that triggered it. Acknowledge dismisses a confirmed false positive.")

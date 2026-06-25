@@ -4,7 +4,7 @@ Stored procedures: runtime, p95, SLA impact (total minutes), and degradation vs 
 prior window (the "runtime crept up since Informatica" tracker).
 Query triage: the heaviest individual statements (incl. those inside procs) ranked by
 a badness score, each with rule-based optimization findings and an on-demand AI
-(Cortex) suggestion.
+(Cortex) suggestion. Sub-views are lazy — only the selected one runs queries.
 """
 
 from __future__ import annotations
@@ -12,8 +12,8 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from lib import session, sp_intel, optimize, anomaly, formulas
-from ._common import scope, header
+from lib import session, sp_intel, optimize, anomaly
+from ._common import scope, header, subview, kpi_row, render_table, empty, loading
 
 _SEV = {"High": "🔴", "Medium": "🟡", "Low": "⚪"}
 
@@ -26,26 +26,29 @@ def render() -> None:
     company, env, days = scope()
     header("Optimization", "Triage slow/inefficient stored procedures and queries — with the fix for each.")
 
-    t_sp, t_q = st.tabs(["Stored procedures", "Query triage"])
+    view = subview(["Stored procedures", "Query triage"], key="opt")
 
     # ================= Stored procedures =================
-    with t_sp:
-        perf = _df(sp_intel.sp_performance_sql(days, company))
+    if view == "Stored procedures":
+        with loading("Loading stored-procedure performance…"):
+            perf = _df(sp_intel.sp_performance_sql(days, company))
         if perf.empty:
-            st.info("No stored-procedure CALLs in range.")
+            empty("No stored-procedure CALLs in range.")
         else:
             total_min = float(perf["TOTAL_MINUTES"].sum()) if "TOTAL_MINUTES" in perf.columns else 0
-            k1, k2, k3 = st.columns(3)
-            k1.metric("Stored procs", len(perf))
-            k2.metric("Total SP runtime", f"{total_min:,.0f} min")
-            k3.metric("Slowest p95", f"{float(perf['P95_SEC'].max()):,.0f}s" if "P95_SEC" in perf.columns else "—")
+            kpi_row([
+                {"label": "Stored procs", "value": len(perf)},
+                {"label": "Total SP runtime", "value": f"{total_min:,.0f} min"},
+                {"label": "Slowest p95", "value": (f"{float(perf['P95_SEC'].max()):,.0f}s"
+                                                    if "P95_SEC" in perf.columns else "—")},
+            ])
             st.caption("Ranked by total minutes = the biggest SLA impact (frequency × duration).")
-            st.dataframe(perf, use_container_width=True, hide_index=True)
+            render_table(perf)
 
         st.subheader("Runtime degradation (vs prior period)")
         deg = _df(sp_intel.sp_degradation_sql(days, company))
         if deg.empty:
-            st.info("Not enough history to compare windows.")
+            empty("Not enough history to compare windows.")
         else:
             worse = deg[deg["PCT_CHANGE"] > 0] if "PCT_CHANGE" in deg.columns else deg
             if worse.empty:
@@ -54,24 +57,24 @@ def render() -> None:
                 st.warning(f"{len(worse)} stored proc(s) are running slower than the prior period:")
                 if "PROC" in worse.columns and "PCT_CHANGE" in worse.columns:
                     st.bar_chart(worse.head(12).set_index("PROC")["PCT_CHANGE"])
-                st.dataframe(worse, use_container_width=True, hide_index=True)
+                render_table(worse)
 
         st.subheader("Duration anomalies")
         dd = _df(sp_intel.sp_duration_daily_sql(days, company))
         anoms = anomaly.detect_anomalies(dd, "TASK", "AVG_DURATION_SEC", "USAGE_DATE",
                                          min_abs=10, min_baseline_days=4) if not dd.empty else []
         if anoms:
-            st.dataframe(pd.DataFrame(anoms)[["entity", "latest", "baseline_mean", "pct_above_mean"]]
-                         .rename(columns={"entity": "PROC", "latest": "LATEST_SEC",
-                                          "baseline_mean": "BASELINE_SEC", "pct_above_mean": "PCT_ABOVE"}),
-                         use_container_width=True, hide_index=True)
+            render_table(pd.DataFrame(anoms)[["entity", "latest", "baseline_mean", "pct_above_mean"]]
+                         .rename(columns={"entity": "TASK", "latest": "LATEST_SEC",
+                                          "baseline_mean": "BASELINE_SEC", "pct_above_mean": "PCT_ABOVE"}))
         else:
             st.caption("No proc ran notably slower than its own baseline.")
 
     # ================= Query triage =================
-    with t_q:
+    elif view == "Query triage":
         st.caption("Heaviest statements (spill / big scans / poor pruning) — usually the slow part inside a proc.")
-        hq = _df(sp_intel.heavy_query_sql(days, company))
+        with loading("Finding heavy queries…"):
+            hq = _df(sp_intel.heavy_query_sql(days, company))
         if hq.empty:
             st.success("No heavy queries (spill / large scans / long runtime) in range.")
             return

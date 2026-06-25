@@ -12,7 +12,7 @@ import streamlit as st
 
 import config
 from lib import controls, queries, session, observability
-from ._common import header
+from ._common import header, subview
 
 
 def _exec_mode() -> bool:
@@ -54,10 +54,10 @@ def render() -> None:
                + ("In-app execution is ENABLED for your role — confirm carefully."
                   if can_exec else "Running in generate-only mode (safe)."))
 
-    tab_wh, tab_cortex = st.tabs(["Warehouse timeouts", "Cortex limits"])
+    view = subview(["Warehouse timeouts", "Cortex limits"], key="controls")
 
     # ---------------- Warehouse timeouts ----------------
-    with tab_wh:
+    if view == "Warehouse timeouts":
         wh_df = session.run(queries.warehouse_names_sql(), tier="metadata", salt=session.refresh_salt())
         names = list(wh_df["WAREHOUSE"]) if not wh_df.empty and "WAREHOUSE" in wh_df.columns else []
         warehouse = (st.selectbox("Warehouse", names) if names
@@ -98,7 +98,7 @@ def render() -> None:
                 st.error(str(e))
 
     # ---------------- Cortex limits ----------------
-    with tab_cortex:
+    elif view == "Cortex limits":
         st.markdown("**Cortex access** — turn Cortex functions on/off for a role.")
         a1, a2 = st.columns([1, 2])
         act = a1.selectbox("Action", ["GRANT", "REVOKE"])
